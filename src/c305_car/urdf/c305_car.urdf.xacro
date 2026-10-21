@@ -1,0 +1,826 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="c305_car">
+
+    <!-- ================================================================== -->
+    <!-- 全局基础参数（单位：米）                                             -->
+    <!--   L：底盘前后方向长度（x 轴）                                        -->
+    <!--   W：底盘左右方向宽度（y 轴）                                        -->
+    <!--   以后只需要改这两个值，整车按比例整体缩放                            -->
+    <!-- ================================================================== -->
+    <xacro:property name="L" value="1.60"/>
+    <xacro:property name="W" value="1.10"/>
+
+    <!-- ================================================================== -->
+    <!-- 一、黑色底盘（已把中央底部防护罩并进来，合并为一个整体）                  -->
+    <!-- ================================================================== -->
+    <xacro:property name="chassis_thickness"        value="${0.19*L}"/>  <!-- 再向下加高到 0.304，顶面仍贴平台底面 -->
+    <xacro:property name="chassis_ground_clearance" value="0.10"/>        <!-- 底面距地 10cm -->
+    <xacro:property name="chassis_z" value="${chassis_ground_clearance + chassis_thickness/2}"/> <!-- 中心高度 0.252，z 0.100~0.404 -->
+    <xacro:property name="chassis_width"     value="${0.675*W - 0.10}"/> <!-- 0.6425，距车轮内缘各 5cm -->
+
+    <!-- ================================================================== -->
+    <!-- 二、白色车身外壳                                                      -->
+    <!-- ================================================================== -->
+    <!-- 上层平台 -->
+    <xacro:property name="platform_length"    value="${0.94*L}"/>  <!-- 参考 1.50 -->
+    <xacro:property name="platform_width"     value="${0.93*W}"/>  <!-- 参考 1.02 -->
+    <xacro:property name="platform_thickness" value="0.06"/>
+    <xacro:property name="platform_z"         value="${0.27*L}"/>  <!-- 中心高度，参考 0.43 -->
+    <xacro:property name="platform_top_z"     value="${platform_z + platform_thickness/2}"/>
+    <!-- 前后面板：倾斜边（沿斜面方向）收短，只保留上层平台顶面以上的部分；
+         下沿刚好落在平台顶面上。宽度按车轮内缘左右各留 5cm。 -->
+    <xacro:property name="panel_tilt"      value="0.3"/>           <!-- 倾斜角 rad -->
+    <xacro:property name="panel_length"    value="${0.12*L}"/>     <!-- 沿斜面长度，约 0.19m（原 0.30） -->
+    <xacro:property name="panel_width"     value="${W}"/> <!-- 约 0.64m，距车轮内缘各 5cm -->
+    <xacro:property name="panel_thickness" value="0.05"/>
+    <!-- 下沉量：让面板下表面在「平台外沿处」正好与平台顶面齐平，从侧面看不到缝。
+         = (l/2)·sinθ + (l/2 - 0.03)·tanθ，其中 0.03 是面板相对平台外沿的前后偏移 -->
+    <xacro:property name="panel_sink" value="${(panel_length/2)*math.sin(panel_tilt) + (panel_length/2 - 0.03)*math.tan(panel_tilt)}"/>
+    <xacro:property name="panel_z" value="${platform_top_z + (panel_length/2)*math.sin(panel_tilt) + (panel_thickness/2)*math.cos(panel_tilt) - panel_sink}"/>
+    <!-- 左右侧板：顶面对齐平台顶面，底面抬高到车轮顶点以上 2cm，避免与车轮相交 -->
+    <xacro:property name="side_length"    value="${0.84*L}"/>      <!-- 参考 1.35 -->
+    <xacro:property name="side_width"     value="${0.09*W}"/>      <!-- 参考 0.10 -->
+    <xacro:property name="side_top_z"     value="${platform_top_z}"/>          <!-- 0.462 -->
+    <xacro:property name="side_clearance" value="0.02"/>                        <!-- 离轮顶 2cm -->
+    <!-- 车轮顶 z = 车轮中心(半径) + 半径 = 2 × 0.225L/2 = 0.225L（轮胎半径沿宽度不变，取最高点） -->
+    <xacro:property name="side_bottom_z"  value="${0.225*L + side_clearance}"/> <!-- 0.380 -->
+    <xacro:property name="side_height"    value="${side_top_z - side_bottom_z}"/> <!-- 0.082 -->
+    <xacro:property name="side_z"         value="${(side_top_z + side_bottom_z)/2}"/>
+    <xacro:property name="side_y"         value="${0.43*W}"/>      <!-- 参考 0.47 -->
+
+    <!-- ================================================================== -->
+    <!-- 三、前后防撞梁                                                        -->
+    <!-- ================================================================== -->
+    <xacro:property name="bumper_length" value="${0.95*W}"/>       <!-- 参考 1.05 -->
+    <xacro:property name="bumper_cross"  value="0.07"/>
+    <xacro:property name="bumper_z"      value="0.15"/>
+    <xacro:property name="bumper_x"      value="${0.56*L}"/>       <!-- 参考 0.90 -->
+
+    <!-- ================================================================== -->
+    <!-- 四、四个越野车轮                                                      -->
+    <!-- ================================================================== -->
+    <xacro:property name="wheel_diameter" value="${0.225*L}"/>     <!-- 参考 0.36 -->
+    <xacro:property name="wheel_radius"   value="${wheel_diameter/2}"/>
+    <xacro:property name="wheel_width"    value="${0.145*W}"/>     <!-- 参考 0.16 -->
+    <xacro:property name="wheel_x"        value="${0.36*L}"/>      <!-- 前后轮中心 x，参考 0.58 -->
+    <xacro:property name="wheel_y"        value="${0.41*W}"/>      <!-- 左右轮中心 y，参考 0.45 -->
+    <xacro:property name="hub_radius"     value="0.10"/>
+    <xacro:property name="hub_width"      value="0.04"/>
+    <xacro:property name="mount_length"   value="0.12"/>           <!-- 悬挂支撑 -->
+    <xacro:property name="mount_width"    value="0.08"/>
+    <xacro:property name="mount_height"   value="0.18"/>
+
+    <!-- ================================================================== -->
+    <!-- 五、上层黑色金属框架主体                                               -->
+    <!--   下底 60cm、上边 40cm，下底两头各竖直向上 20cm，两条斜边连到上边，        -->
+    <!--   总高 50cm。框架左右宽度（y 方向）保持 0.68m。                         -->
+    <!-- ================================================================== -->
+    <xacro:property name="hex_bottom"     value="0.60"/>           <!-- 下底（前后方向） -->
+    <xacro:property name="hex_top"        value="0.40"/>           <!-- 上边（前后方向） -->
+    <xacro:property name="hex_vert"       value="0.20"/>           <!-- 竖直边高度 -->
+    <xacro:property name="hex_height"     value="0.50"/>           <!-- 框架总高 -->
+    <xacro:property name="frame_width"    value="0.68"/>           <!-- 框架左右宽度 -->
+    <xacro:property name="frame_bottom_z" value="${platform_top_z}"/>  <!-- 框架坐落在白色平台上 -->
+
+    <xacro:property name="hex_half_bottom" value="${hex_bottom/2}"/>                       <!-- 0.30 -->
+    <xacro:property name="hex_half_top"    value="${hex_top/2}"/>                          <!-- 0.20 -->
+    <xacro:property name="slant_run"       value="${hex_half_bottom - hex_half_top}"/>     <!-- 斜边水平投影 0.10 -->
+    <xacro:property name="slant_rise"      value="${hex_height - hex_vert}"/>              <!-- 斜边竖直投影 0.30 -->
+    <xacro:property name="slant_len"       value="${math.sqrt(slant_run*slant_run + slant_rise*slant_rise)}"/>
+    <xacro:property name="slant_angle"     value="${math.atan2(slant_run, slant_rise)}"/>
+    <xacro:property name="frame_half_w"    value="${frame_width/2}"/>                      <!-- 0.34 -->
+    <xacro:property name="frame_top_z"     value="${frame_bottom_z + hex_height}"/>
+    <xacro:property name="pillar_cross"    value="0.02"/>                                  <!-- 框架柱子宽度 -->
+
+    <!-- 两侧五边形（梯形切角：下底 25cm、上底 20cm、靠六边形一侧竖边 20cm、外侧竖边 10cm，斜边直接连起来。前后镜像对称） -->
+    <xacro:property name="pent_bottom"    value="0.25"/>                             <!-- 下底 25cm -->
+    <xacro:property name="pent_top"       value="0.20"/>                             <!-- 上底 20cm -->
+    <xacro:property name="pent_outer"     value="0.10"/>                             <!-- 外侧短竖边 10cm（靠六边形一侧 20cm = hex_vert） -->
+    <xacro:property name="pent_outer_x"   value="${hex_half_bottom + pent_bottom}"/> <!-- 五边形外缘 x = 0.55 -->
+    <xacro:property name="pent_top_x"     value="${hex_half_bottom + pent_top}"/>    <!-- 顶边外端 x = 0.50 -->
+    <xacro:property name="pent_slant_run"  value="${pent_bottom - pent_top}"/>       <!-- 斜边水平投影 0.05 -->
+    <xacro:property name="pent_slant_rise" value="${hex_vert - pent_outer}"/>        <!-- 斜边竖直投影 0.10 -->
+    <xacro:property name="pent_slant_len"   value="${math.sqrt(pent_slant_run*pent_slant_run + pent_slant_rise*pent_slant_rise)}"/>
+    <xacro:property name="pent_slant_angle" value="${math.atan2(pent_slant_run, pent_slant_rise)}"/>
+    <xacro:property name="frame_total_length" value="${2*pent_outer_x}"/>            <!-- 框架 x 向总宽 1.10 -->
+
+    <!-- ================================================================== -->
+    <!-- 颜色（RGBA，末位为透明度 alpha）。
+         这里保持 alpha=1.0（颜色定义本身不透明）：
+           - rviz2 的半透明由 display_c305_car.rviz 里 RobotModel 的 Alpha=0.5 控制；
+           - Gazebo 的半透明由 <gazebo reference><material>C305Car/*Transparent</material>
+             提供，材质定义见 media/materials/scripts/c305_car.material。
+         这样无论 rviz 的 Alpha 是“覆盖”还是“相乘”，最终都是 0.5，结果确定。 -->
+    <!-- ================================================================== -->
+    <xacro:property name="c_black"     value="0.05 0.05 0.05 1.0"/>
+    <xacro:property name="c_white"     value="0.92 0.92 0.92 1.0"/>
+    <xacro:property name="c_darkgray"  value="0.25 0.25 0.25 1.0"/>
+    <xacro:property name="c_silver"    value="0.75 0.75 0.78 1.0"/>
+    <xacro:property name="c_blueblack" value="0.10 0.15 0.30 1.0"/>
+    <xacro:property name="c_blue"      value="0.10 0.55 1.00 1.0"/>
+
+    <!-- ================================================================== -->
+    <!-- 惯性计算宏                                                            -->
+    <!-- ================================================================== -->
+    <xacro:macro name="box_inertia" params="m l w h">
+        <inertial>
+            <mass value="${m}"/>
+            <inertia ixx="${(m/12)*(w*w + h*h)}" ixy="0" ixz="0"
+                     iyy="${(m/12)*(l*l + h*h)}" iyz="0"
+                     izz="${(m/12)*(l*l + w*w)}"/>
+        </inertial>
+    </xacro:macro>
+
+    <xacro:macro name="cylinder_inertia" params="m r h">
+        <inertial>
+            <mass value="${m}"/>
+            <inertia ixx="${(m/12)*(3*r*r + h*h)}" ixy="0" ixz="0"
+                     iyy="${(m/12)*(3*r*r + h*h)}" iyz="0"
+                     izz="${(m/2)*(r*r)}"/>
+        </inertial>
+    </xacro:macro>
+
+    <!-- ================================================================== -->
+    <!-- 通用固定件宏：长方体（自动生成 link + fixed joint）                     -->
+    <!-- ================================================================== -->
+    <xacro:macro name="fixed_box" params="name parent xyz rpy l w h mass rgba">
+        <link name="${name}">
+            <visual>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <geometry><box size="${l} ${w} ${h}"/></geometry>
+                <material name="${name}_mat"><color rgba="${rgba}"/></material>
+            </visual>
+            <collision>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <geometry><box size="${l} ${w} ${h}"/></geometry>
+            </collision>
+            <xacro:box_inertia m="${mass}" l="${l}" w="${w}" h="${h}"/>
+        </link>
+        <joint name="${name}_joint" type="fixed">
+            <parent link="${parent}"/>
+            <child link="${name}"/>
+            <origin xyz="${xyz}" rpy="${rpy}"/>
+        </joint>
+    </xacro:macro>
+
+    <!-- 通用固定件宏：圆柱体（默认轴线沿 z）                                    -->
+    <xacro:macro name="fixed_cylinder" params="name parent xyz rpy r h mass rgba">
+        <link name="${name}">
+            <visual>
+                <origin xyz="0 0 0" rpy="${rpy}"/>
+                <geometry><cylinder radius="${r}" length="${h}"/></geometry>
+                <material name="${name}_mat"><color rgba="${rgba}"/></material>
+            </visual>
+            <collision>
+                <origin xyz="0 0 0" rpy="${rpy}"/>
+                <geometry><cylinder radius="${r}" length="${h}"/></geometry>
+            </collision>
+            <xacro:cylinder_inertia m="${mass}" r="${r}" h="${h}"/>
+        </link>
+        <joint name="${name}_joint" type="fixed">
+            <parent link="${parent}"/>
+            <child link="${name}"/>
+            <origin xyz="${xyz}" rpy="0 0 0"/>
+        </joint>
+    </xacro:macro>
+
+    <!-- 通用方管宏：只生成一个 visual（用于同一个 link 内拼装框架）               -->
+    <xacro:macro name="tube" params="x y z lx ly lz rpy">
+        <visual>
+            <origin xyz="${x} ${y} ${z}" rpy="${rpy}"/>
+            <geometry><box size="${lx} ${ly} ${lz}"/></geometry>
+            <material name="frame_mat"><color rgba="${c_black}"/></material>
+        </visual>
+        <!-- 碰撞体与方管一一对应（与 visual 完全重合） -->
+        <collision>
+            <origin xyz="${x} ${y} ${z}" rpy="${rpy}"/>
+            <geometry><box size="${lx} ${ly} ${lz}"/></geometry>
+        </collision>
+    </xacro:macro>
+
+    <!-- 五边形面宏：生成一个五边形面的 4 条新边（与六边形共用的 20cm 竖边由六边形提供）。
+         side=-1 为后侧五边形（x<0），side=+1 为前侧五边形（x>0，镜像）。 -->
+    <xacro:macro name="pentagon_edges" params="side y">
+        <!-- 下底（外缘 → 六边形下底角） -->
+        <xacro:tube x="${side*(hex_half_bottom + pent_bottom/2)}" y="${y}" z="0"
+            lx="${pent_bottom}" ly="${pillar_cross}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <!-- 上底：前侧由下方单独绘制细管、后侧由下方封闭为完整长方体，故宏内不再绘制 -->
+        <!-- 外侧短竖边 -->
+        <xacro:tube x="${side*pent_outer_x}" y="${y}" z="${pent_outer/2}"
+            lx="${pillar_cross}" ly="${pillar_cross}" lz="${pent_outer}" rpy="0 0 0"/>
+        <!-- 斜边（连接外侧竖边顶端与上底外端） -->
+        <xacro:tube x="${side*(hex_half_bottom + (pent_top + pent_bottom)/2)}" y="${y}" z="${(hex_vert + pent_outer)/2}"
+            lx="${pillar_cross}" ly="${pillar_cross}" lz="${pent_slant_len}" rpy="0 ${-side*pent_slant_angle} 0"/>
+    </xacro:macro>
+
+    <!-- ================================================================== -->
+    <!-- 车轮宏（轮胎 + 轮毂，continuous 关节）                                 -->
+    <!--   parent：转向轮挂在转向节 steer_*_link 下，后轮直接挂在 base_link 下     -->
+    <!-- ================================================================== -->
+    <xacro:macro name="wheel" params="name x y hub_y parent:='base_link'">
+        <link name="${name}_link">
+            <!-- 轮胎 -->
+            <visual>
+                <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+                <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+                <material name="${name}_tire_mat"><color rgba="${c_black}"/></material>
+            </visual>
+            <collision>
+                <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+                <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+            </collision>
+            <!-- 轮毂（外侧面） -->
+            <visual>
+                <origin xyz="0 ${hub_y} 0" rpy="${pi/2} 0 0"/>
+                <geometry><cylinder radius="${hub_radius}" length="${hub_width}"/></geometry>
+                <material name="${name}_hub_mat"><color rgba="${c_darkgray}"/></material>
+            </visual>
+            <xacro:cylinder_inertia m="2.0" r="${wheel_radius}" h="${wheel_width}"/>
+        </link>
+        <joint name="${name}_joint" type="continuous">
+            <parent link="${parent}"/>
+            <child link="${name}_link"/>
+            <origin xyz="${x} ${y} ${wheel_radius}" rpy="0 0 0"/>
+            <axis xyz="0 1 0"/>
+            <!-- continuous 关节没有 limit 时，sdformat 生成的 SDF 不带 effort，
+                 Gazebo 会按很小的默认驱动力矩处理，表现为“指令 0.5 m/s、
+                 实际只有一半”。这里显式给出足够的 effort 与 velocity 上限。 -->
+            <limit effort="200" velocity="30"/>
+        </joint>
+    </xacro:macro>
+
+    <!-- ================================================================== -->
+    <!-- 摄像头宏（原摄像头等比例缩小至约 2cm：外壳 + 镜头 + 安装座，镜头朝外、无下俯） -->
+    <!-- ================================================================== -->
+    <xacro:macro name="camera" params="name x y z yaw">
+        <link name="${name}_link">
+            <!-- 外壳，镜头朝向本 link 的 +x 方向 -->
+            <visual>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <geometry><box size="0.02 0.016 0.016"/></geometry>
+                <material name="${name}_housing_mat"><color rgba="${c_black}"/></material>
+            </visual>
+            <!-- 镜头 -->
+            <visual>
+                <origin xyz="0.013 0 0" rpy="0 ${pi/2} 0"/>
+                <geometry><cylinder radius="0.004" length="0.006"/></geometry>
+                <material name="${name}_lens_mat"><color rgba="${c_blueblack}"/></material>
+            </visual>
+            <!-- 安装座 -->
+            <visual>
+                <origin xyz="0 0 -0.011" rpy="0 0 0"/>
+                <geometry><box size="0.02 0.016 0.006"/></geometry>
+                <material name="${name}_mount_mat"><color rgba="${c_black}"/></material>
+            </visual>
+            <!-- 碰撞体：包住外壳 + 镜头 + 安装座的包围盒（x:-0.01~0.016, z:-0.014~0.008） -->
+            <collision>
+                <origin xyz="0.003 0 -0.003" rpy="0 0 0"/>
+                <geometry><box size="0.026 0.016 0.022"/></geometry>
+            </collision>
+            <xacro:box_inertia m="0.05" l="0.02" w="0.016" h="0.022"/>
+        </link>
+        <joint name="${name}_joint" type="fixed">
+            <parent link="base_link"/>
+            <child link="${name}_link"/>
+            <origin xyz="${x} ${y} ${z}" rpy="0 0 ${yaw}"/>
+        </joint>
+    </xacro:macro>
+
+    <!-- ================================================================== -->
+    <!-- 机器人本体                                                            -->
+    <!-- ================================================================== -->
+    <!-- 根参考系：位于底盘几何中心正下方、地面 z=0 处。
+         Gazebo 要求每个 link 都有 inertial，故给根 link 一个极小质量。
+         质量过大会把整车质心拉低，所以取 0.001kg。 -->
+    <link name="base_link">
+        <inertial>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <mass value="0.001"/>
+            <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+        </inertial>
+    </link>
+
+    <!-- 一、黑色底盘（含原中央底部防护罩；前后各比平台短 5cm，宽度距车轮内缘各 5cm） -->
+    <xacro:fixed_box name="chassis_link" parent="base_link"
+        xyz="0 0 ${chassis_z}" rpy="0 0 0"
+        l="${platform_length - 0.10}" w="${chassis_width}" h="${chassis_thickness}" mass="40" rgba="${c_black}"/>
+
+    <!-- 二、白色车身外壳 -->
+    <xacro:fixed_box name="white_body_platform_link" parent="base_link"
+        xyz="0 0 ${platform_z}" rpy="0 0 0"
+        l="${platform_length}" w="${platform_width}" h="${platform_thickness}" mass="5" rgba="${c_white}"/>
+
+    <xacro:fixed_box name="white_body_front_link" parent="base_link"
+        xyz="${platform_length/2 - panel_length/2 + 0.03} 0 ${panel_z}" rpy="0 ${-panel_tilt} 0"
+        l="${panel_length}" w="${panel_width}" h="${panel_thickness}" mass="2" rgba="${c_white}"/>
+
+    <xacro:fixed_box name="white_body_rear_link" parent="base_link"
+        xyz="${-(platform_length/2 - panel_length/2 + 0.03)} 0 ${panel_z}" rpy="0 ${panel_tilt} 0"
+        l="${panel_length}" w="${panel_width}" h="${panel_thickness}" mass="2" rgba="${c_white}"/>
+
+    <xacro:fixed_box name="white_body_left_link" parent="base_link"
+        xyz="0 ${side_y} ${side_z}" rpy="0 0 0"
+        l="${side_length}" w="${side_width}" h="${side_height}" mass="2" rgba="${c_white}"/>
+
+    <xacro:fixed_box name="white_body_right_link" parent="base_link"
+        xyz="0 ${-side_y} ${side_z}" rpy="0 0 0"
+        l="${side_length}" w="${side_width}" h="${side_height}" mass="2" rgba="${c_white}"/>
+
+    <!-- 三、前后防撞梁（坐标关系保持原样，挂在 base_link 下） -->
+    <xacro:fixed_box name="front_bumper_link" parent="base_link"
+        xyz="${bumper_x} 0 ${bumper_z}" rpy="0 0 0"
+        l="${bumper_cross}" w="${bumper_length}" h="${bumper_cross}" mass="3" rgba="${c_black}"/>
+
+    <xacro:fixed_box name="rear_bumper_link" parent="base_link"
+        xyz="${-bumper_x} 0 ${bumper_z}" rpy="0 0 0"
+        l="${bumper_cross}" w="${bumper_length}" h="${bumper_cross}" mass="3" rgba="${c_black}"/>
+
+    <!-- 防撞梁连接杆：从底盘前后端面水平伸到防撞梁内侧面，左右各一根 -->
+    <!-- x 方向：底盘端面 = (platform_length-0.10)/2，防撞梁内侧面 = bumper_x - bumper_cross/2 -->
+    <xacro:property name="bumper_rod_x" value="${((platform_length - 0.10)/2 + bumper_x - bumper_cross/2)/2}"/>
+    <xacro:property name="bumper_rod_l" value="${bumper_x - bumper_cross/2 - (platform_length - 0.10)/2 + 0.04}"/>
+    <!-- z 取防撞梁顶面与底盘底面的中点，杆厚 4cm 可同时压进两者 -->
+    <xacro:property name="bumper_rod_z" value="${(bumper_z + bumper_cross/2 + chassis_ground_clearance)/2}"/>
+
+    <xacro:fixed_box name="bumper_rod_front_left_link" parent="chassis_link"
+        xyz="${bumper_rod_x} 0.26 ${bumper_rod_z - chassis_z}" rpy="0 0 0"
+        l="${bumper_rod_l}" w="0.06" h="0.04" mass="0.3" rgba="${c_black}"/>
+    <xacro:fixed_box name="bumper_rod_front_right_link" parent="chassis_link"
+        xyz="${bumper_rod_x} -0.26 ${bumper_rod_z - chassis_z}" rpy="0 0 0"
+        l="${bumper_rod_l}" w="0.06" h="0.04" mass="0.3" rgba="${c_black}"/>
+    <xacro:fixed_box name="bumper_rod_rear_left_link" parent="chassis_link"
+        xyz="${-bumper_rod_x} 0.26 ${bumper_rod_z - chassis_z}" rpy="0 0 0"
+        l="${bumper_rod_l}" w="0.06" h="0.04" mass="0.3" rgba="${c_black}"/>
+    <xacro:fixed_box name="bumper_rod_rear_right_link" parent="chassis_link"
+        xyz="${-bumper_rod_x} -0.26 ${bumper_rod_z - chassis_z}" rpy="0 0 0"
+        l="${bumper_rod_l}" w="0.06" h="0.04" mass="0.3" rgba="${c_black}"/>
+
+    <!-- 四、车轮悬挂支撑（固定） -->
+    <xacro:fixed_box name="wheel_mount_front_left_link" parent="base_link"
+        xyz="${wheel_x} ${wheel_y} 0.20" rpy="0 0 0"
+        l="${mount_length}" w="${mount_width}" h="${mount_height}" mass="1" rgba="${c_darkgray}"/>
+    <xacro:fixed_box name="wheel_mount_front_right_link" parent="base_link"
+        xyz="${wheel_x} ${-wheel_y} 0.20" rpy="0 0 0"
+        l="${mount_length}" w="${mount_width}" h="${mount_height}" mass="1" rgba="${c_darkgray}"/>
+    <xacro:fixed_box name="wheel_mount_rear_left_link" parent="base_link"
+        xyz="${-wheel_x} ${wheel_y} 0.20" rpy="0 0 0"
+        l="${mount_length}" w="${mount_width}" h="${mount_height}" mass="1" rgba="${c_darkgray}"/>
+    <xacro:fixed_box name="wheel_mount_rear_right_link" parent="base_link"
+        xyz="${-wheel_x} ${-wheel_y} 0.20" rpy="0 0 0"
+        l="${mount_length}" w="${mount_width}" h="${mount_height}" mass="1" rgba="${c_darkgray}"/>
+
+    <!-- 前轮转向节（双层关节的第一层）：
+         base_link  revolute(绕 z, ±0.5rad)  steer_front_*_link  continuous(绕 y)  wheel_front_*_link
+         转向节原点放在 (wheel_x, wheel_y, 0)，其 z 轴正好穿过车轮中心，转向时轮心不移动。
+         转向节本身没有几何，但 Gazebo 会丢弃无惯性 link（并把子 link 焊死到父 link），
+         所以必须给一个很小的惯性。 -->
+    <xacro:macro name="steer_knuckle" params="name x y">
+        <link name="${name}_link">
+            <inertial>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <mass value="0.5"/>
+                <inertia ixx="5e-4" ixy="0" ixz="0" iyy="5e-4" iyz="0" izz="5e-4"/>
+            </inertial>
+        </link>
+        <joint name="${name}_joint" type="revolute">
+            <parent link="base_link"/>
+            <child link="${name}_link"/>
+            <origin xyz="${x} ${y} 0" rpy="0 0 0"/>
+            <axis xyz="0 0 1"/>
+            <limit lower="-0.5" upper="0.5" effort="200" velocity="1.0"/>
+            <dynamics damping="1.0" friction="0.0"/>
+        </joint>
+    </xacro:macro>
+
+    <xacro:steer_knuckle name="steer_front_left"  x="${wheel_x}" y="${wheel_y}"/>
+    <xacro:steer_knuckle name="steer_front_right" x="${wheel_x}" y="${-wheel_y}"/>
+
+    <!-- 四个车轮（连续旋转关节）。hub_y：左轮 +，右轮 -
+         前轮：挂在转向节下，原点相对转向节为 0；后轮：直接挂在 base_link 下 -->
+    <xacro:wheel name="wheel_front_left"  x="0" y="0" hub_y="${wheel_width/2 + hub_width/2}"
+                 parent="steer_front_left_link"/>
+    <xacro:wheel name="wheel_front_right" x="0" y="0" hub_y="${-(wheel_width/2 + hub_width/2)}"
+                 parent="steer_front_right_link"/>
+    <xacro:wheel name="wheel_rear_left"   x="${-wheel_x}" y="${wheel_y}"  hub_y="${wheel_width/2 + hub_width/2}"/>
+    <xacro:wheel name="wheel_rear_right"  x="${-wheel_x}" y="${-wheel_y}" hub_y="${-(wheel_width/2 + hub_width/2)}"/>
+
+    <!-- 车轮连接杆：圆柱形车轴，从底盘侧面沿 y 轴水平伸到车轮正中心（轴心 z = wheel_radius） -->
+    <!-- 起点插入底盘内侧 2cm，终点到轮心 y = wheel_y -->
+    <xacro:property name="axle_y"   value="${(chassis_width/2 - 0.02 + wheel_y)/2}"/>
+    <xacro:property name="axle_len" value="${wheel_y - chassis_width/2 + 0.02}"/>
+    <xacro:property name="axle_r"   value="0.035"/>
+
+    <xacro:fixed_cylinder name="wheel_axle_front_left_link" parent="chassis_link"
+        xyz="${wheel_x} ${axle_y} ${wheel_radius - chassis_z}" rpy="${pi/2} 0 0"
+        r="${axle_r}" h="${axle_len}" mass="0.4" rgba="${c_darkgray}"/>
+    <xacro:fixed_cylinder name="wheel_axle_front_right_link" parent="chassis_link"
+        xyz="${wheel_x} ${-axle_y} ${wheel_radius - chassis_z}" rpy="${pi/2} 0 0"
+        r="${axle_r}" h="${axle_len}" mass="0.4" rgba="${c_darkgray}"/>
+    <xacro:fixed_cylinder name="wheel_axle_rear_left_link" parent="chassis_link"
+        xyz="${-wheel_x} ${axle_y} ${wheel_radius - chassis_z}" rpy="${pi/2} 0 0"
+        r="${axle_r}" h="${axle_len}" mass="0.4" rgba="${c_darkgray}"/>
+    <xacro:fixed_cylinder name="wheel_axle_rear_right_link" parent="chassis_link"
+        xyz="${-wheel_x} ${-axle_y} ${wheel_radius - chassis_z}" rpy="${pi/2} 0 0"
+        r="${axle_r}" h="${axle_len}" mass="0.4" rgba="${c_darkgray}"/>
+
+    <!-- 五、上层黑色金属框架（六边形棱柱：左右两个六边形面 + 6 根横梁） -->
+    <link name="upper_frame_link">
+        <!-- 左侧六边形面（y = +frame_half_w） -->
+        <xacro:tube x="0"                        y="${frame_half_w}" z="0"                        lx="${hex_bottom}"        ly="${pillar_cross}" lz="${pillar_cross}" rpy="0 0 0"/>           <!-- 下底 -->
+        <xacro:tube x="${hex_half_bottom}"       y="${frame_half_w}" z="${hex_vert/2}"            lx="${pillar_cross}"      ly="${pillar_cross}" lz="${hex_vert}"     rpy="0 0 0"/>           <!-- 右竖直 -->
+        <xacro:tube x="${hex_half_bottom - slant_run/2}" y="${frame_half_w}" z="${hex_vert + slant_rise/2}" lx="${pillar_cross}" ly="${pillar_cross}" lz="${slant_len}" rpy="0 ${-slant_angle} 0"/>  <!-- 右斜边 -->
+        <xacro:tube x="0"                        y="${frame_half_w}" z="${hex_height}"            lx="${hex_top}"           ly="${pillar_cross}" lz="${pillar_cross}" rpy="0 0 0"/>           <!-- 上边 -->
+        <xacro:tube x="${-(hex_half_bottom - slant_run/2)}" y="${frame_half_w}" z="${hex_vert + slant_rise/2}" lx="${pillar_cross}" ly="${pillar_cross}" lz="${slant_len}" rpy="0 ${slant_angle} 0"/>  <!-- 左斜边 -->
+        <xacro:tube x="${-hex_half_bottom}"      y="${frame_half_w}" z="${hex_vert/2}"            lx="${pillar_cross}"      ly="${pillar_cross}" lz="${hex_vert}"     rpy="0 0 0"/>           <!-- 左竖直 -->
+        <!-- 右侧六边形面（y = -frame_half_w） -->
+        <xacro:tube x="0"                        y="${-frame_half_w}" z="0"                       lx="${hex_bottom}"        ly="${pillar_cross}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="${hex_half_bottom}"       y="${-frame_half_w}" z="${hex_vert/2}"           lx="${pillar_cross}"      ly="${pillar_cross}" lz="${hex_vert}"     rpy="0 0 0"/>
+        <xacro:tube x="${hex_half_bottom - slant_run/2}" y="${-frame_half_w}" z="${hex_vert + slant_rise/2}" lx="${pillar_cross}" ly="${pillar_cross}" lz="${slant_len}" rpy="0 ${-slant_angle} 0"/>
+        <xacro:tube x="0"                        y="${-frame_half_w}" z="${hex_height}"           lx="${hex_top}"           ly="${pillar_cross}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="${-(hex_half_bottom - slant_run/2)}" y="${-frame_half_w}" z="${hex_vert + slant_rise/2}" lx="${pillar_cross}" ly="${pillar_cross}" lz="${slant_len}" rpy="0 ${slant_angle} 0"/>
+        <xacro:tube x="${-hex_half_bottom}"      y="${-frame_half_w}" z="${hex_vert/2}"           lx="${pillar_cross}"      ly="${pillar_cross}" lz="${hex_vert}"     rpy="0 0 0"/>
+        <!-- 6 根横梁（沿 y 连接左右两个六边形面，位于六个顶点） -->
+        <xacro:tube x="${-hex_half_bottom}" y="0" z="0"            lx="${pillar_cross}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="${hex_half_bottom}"  y="0" z="0"            lx="${pillar_cross}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="${hex_half_bottom}"  y="0" z="${hex_vert}"  lx="${pillar_cross}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="${hex_half_top}"     y="0" z="${hex_height}" lx="${pillar_cross}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="${-hex_half_top}"    y="0" z="${hex_height}" lx="${pillar_cross}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="${-hex_half_bottom}" y="0" z="${hex_vert}"  lx="${pillar_cross}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <!-- 顶部十字形框架：两根横梁在中心交叉（位于雷达连接柱下方） -->
+        <xacro:tube x="0" y="0" z="${hex_height}" lx="${hex_top}"      ly="${pillar_cross}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="0" y="0" z="${hex_height}" lx="${pillar_cross}" ly="${frame_width}"   lz="${pillar_cross}" rpy="0 0 0"/>
+        <!-- 左右两个面上的前后五边形（每个面：后五边形 + 前五边形，共 4 个） -->
+        <xacro:pentagon_edges side="-1" y="${frame_half_w}"/>
+        <xacro:pentagon_edges side="1"  y="${frame_half_w}"/>
+        <xacro:pentagon_edges side="-1" y="${-frame_half_w}"/>
+        <xacro:pentagon_edges side="1"  y="${-frame_half_w}"/>
+        <!-- 前侧上边：定位天线那一半（y>0）封闭为完整长方体，另一半（y<0）保留细管 -->
+        <xacro:tube x="${hex_half_bottom + pent_top/2}" y="${frame_half_w/2}" z="${hex_vert}" lx="${pent_top}" ly="${frame_half_w}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="${hex_half_bottom + pent_top/2}" y="${-frame_half_w}" z="${hex_vert}" lx="${pent_top}" ly="${pillar_cross}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <!-- 后侧上边：完整长方体（封闭后侧两个五边形两条上边之间的区域） -->
+        <xacro:tube x="${-(hex_half_bottom + pent_top/2)}" y="0" z="${hex_vert}" lx="${pent_top}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <!-- 后侧两个六边形斜边之间封闭：充当电脑屏幕（沿斜边方向的斜面板） -->
+        <xacro:tube x="${-(hex_half_bottom - slant_run/2)}" y="0" z="${hex_vert + slant_rise/2}"
+            lx="${pillar_cross}" ly="${frame_width}" lz="${slant_len}" rpy="0 ${slant_angle} 0"/>
+        <!-- 前侧两个六边形斜边之间加一根横梁 -->
+        <xacro:tube x="${hex_half_bottom - slant_run/2}" y="0" z="${hex_vert + slant_rise/2}"
+            lx="${pillar_cross}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <!-- 五边形底角处的横梁（沿 y 连接左右两个面；斜边下侧不再设横梁） -->
+        <xacro:tube x="${-pent_outer_x}" y="0" z="0"          lx="${pillar_cross}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="${pent_outer_x}"  y="0" z="0"          lx="${pillar_cross}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <xacro:tube x="${pent_top_x}"    y="0" z="${hex_vert}" lx="${pillar_cross}" ly="${frame_width}" lz="${pillar_cross}" rpy="0 0 0"/>
+        <!-- 碰撞体由每根方管的 collision 提供（见 tube 宏），不再用整块实心盒，
+             这样框架内部的空腔不会被误判为碰撞区域 -->
+        <!-- 框架质量 15kg（由 2cm 方管拼成，惯性按等效实体盒近似）。
+             重心必须显式放在框架几何中心：box_inertia 宏不带 origin，
+             默认会把质心放在 link 原点（即框架底部），整车身质心会被拉低。 -->
+        <inertial>
+            <origin xyz="0 0 ${hex_height/2}" rpy="0 0 0"/>
+            <mass value="15"/>
+            <inertia ixx="${(15/12)*(frame_width*frame_width + hex_height*hex_height)}" ixy="0" ixz="0"
+                     iyy="${(15/12)*(frame_total_length*frame_total_length + hex_height*hex_height)}" iyz="0"
+                     izz="${(15/12)*(frame_total_length*frame_total_length + frame_width*frame_width)}"/>
+        </inertial>
+    </link>
+    <joint name="upper_frame_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="upper_frame_link"/>
+        <origin xyz="0 0 ${frame_bottom_z}" rpy="0 0 0"/>
+    </joint>
+
+    <!-- 六、四个摄像头（装在顶部四条横梁正中间的上方，镜头朝外、无下俯） -->
+    <xacro:camera name="camera_front" x="${hex_half_top}"  y="0"                z="${frame_top_z + pillar_cross/2 + 0.014}" yaw="0"/>
+    <xacro:camera name="camera_rear"  x="${-hex_half_top}" y="0"                z="${frame_top_z + pillar_cross/2 + 0.014}" yaw="${pi}"/>
+    <xacro:camera name="camera_left"  x="0"                y="${frame_half_w}"  z="${frame_top_z + pillar_cross/2 + 0.014}" yaw="${pi/2}"/>
+    <xacro:camera name="camera_right" x="0"                y="${-frame_half_w}" z="${frame_top_z + pillar_cross/2 + 0.014}" yaw="${-pi/2}"/>
+
+    <!-- 七、顶部激光雷达（黑色底座 → 黑色连接杆 → 三段式雷达本体） -->
+    <xacro:fixed_cylinder name="lidar_base_link" parent="base_link"
+        xyz="0 0 ${frame_top_z + pillar_cross/2 + 0.005}" rpy="0 0 0"
+        r="0.0425" h="0.01" mass="0.3" rgba="${c_black}"/>
+
+    <xacro:fixed_cylinder name="lidar_stand_link" parent="lidar_base_link"
+        xyz="0 0 0.03" rpy="0 0 0"
+        r="0.0175" h="0.05" mass="0.2" rgba="${c_black}"/>
+
+    <!-- 三段式雷达本体：rviz2 对同一 link 内多个 <visual> 只取第一个材质（rviz issue 1293），
+         故把上中下三段拆成独立 link，各自带单一 visual 才能显示各自的颜色 -->
+    <link name="lidar_link">
+        <!-- 仅保留碰撞与惯性；视觉拆到下方三个子 link -->
+        <collision>
+            <origin xyz="0 0 0.0425" rpy="0 0 0"/>
+            <geometry><cylinder radius="0.0425" length="0.085"/></geometry>
+        </collision>
+        <xacro:cylinder_inertia m="1.0" r="0.0425" h="0.085"/>
+    </link>
+    <joint name="lidar_joint" type="fixed">
+        <parent link="lidar_stand_link"/>
+        <child link="lidar_link"/>
+        <origin xyz="0 0 0.025" rpy="0 0 0"/>
+    </joint>
+
+    <!-- 下部银色盖子 -->
+    <link name="lidar_cap_bottom_link">
+        <visual>
+            <origin xyz="0 0 0.01" rpy="0 0 0"/>
+            <geometry><cylinder radius="0.0425" length="0.02"/></geometry>
+            <material name="lidar_cap_bottom_mat"><color rgba="${c_silver}"/></material>
+        </visual>
+        <xacro:cylinder_inertia m="0.1" r="0.0425" h="0.02"/>
+    </link>
+    <joint name="lidar_cap_bottom_joint" type="fixed">
+        <parent link="lidar_link"/>
+        <child link="lidar_cap_bottom_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- 中部半透明蓝色主体 -->
+    <link name="lidar_body_link">
+        <visual>
+            <origin xyz="0 0 0.0425" rpy="0 0 0"/>
+            <geometry><cylinder radius="0.0425" length="0.045"/></geometry>
+            <material name="lidar_body_mat"><color rgba="${c_blue}"/></material>
+        </visual>
+        <xacro:cylinder_inertia m="0.3" r="0.0425" h="0.045"/>
+    </link>
+    <joint name="lidar_body_joint" type="fixed">
+        <parent link="lidar_link"/>
+        <child link="lidar_body_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- 上部银色盖子 -->
+    <link name="lidar_cap_top_link">
+        <visual>
+            <origin xyz="0 0 0.075" rpy="0 0 0"/>
+            <geometry><cylinder radius="0.0425" length="0.02"/></geometry>
+            <material name="lidar_cap_top_mat"><color rgba="${c_silver}"/></material>
+        </visual>
+        <xacro:cylinder_inertia m="0.1" r="0.0425" h="0.02"/>
+    </link>
+    <joint name="lidar_cap_top_joint" type="fixed">
+        <parent link="lidar_link"/>
+        <child link="lidar_cap_top_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- 八、定位天线（黑色底座 → 银色连接杆 → 蘑菇圆盘，位于前侧封闭半平台正中间） -->
+    <xacro:fixed_cylinder name="gnss_base_link" parent="base_link"
+        xyz="${hex_half_bottom + pent_top/2} ${frame_half_w/2} ${frame_bottom_z + hex_vert + pillar_cross/2 + 0.0035}" rpy="0 0 0"
+        r="0.0475" h="0.007" mass="0.3" rgba="${c_black}"/>
+
+    <xacro:fixed_cylinder name="gnss_stand_link" parent="gnss_base_link"
+        xyz="0 0 0.0535" rpy="0 0 0"
+        r="0.01" h="0.10" mass="0.2" rgba="${c_silver}"/>
+
+    <!-- 蘑菇圆盘：穹顶（球冠网格，直径约14.5cm、底到顶高约5.5cm，底面位于 link 原点） -->
+    <link name="gnss_antenna_link">
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <!-- 注意：Gazebo Classic 无法解析 package:// URI，渲染相机时该视觉加载失败
+                     会导致所有相机停止出图（rviz 中却正常）。这里用 xacro 的 $(find)
+                     展开成 file:// 绝对路径，rviz 与 Gazebo 都能加载。 -->
+                <mesh filename="file://$(find c305_car)/meshes/gnss_dome.stl"/>
+            </geometry>
+            <material name="gnss_antenna_mat"><color rgba="${c_white}"/></material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0.0275" rpy="0 0 0"/>
+            <geometry><cylinder radius="0.0725" length="0.055"/></geometry>
+        </collision>
+        <xacro:cylinder_inertia m="0.2" r="0.0725" h="0.055"/>
+    </link>
+    <joint name="gnss_antenna_link_joint" type="fixed">
+        <parent link="gnss_stand_link"/>
+        <child link="gnss_antenna_link"/>
+        <origin xyz="0 0 0.05" rpy="0 0 0"/>
+    </joint>
+
+    <!-- ================================================================== -->
+    <!-- 九、Gazebo 仿真配置（材质 + ros2_control + 传感器插件）               -->
+    <!-- ================================================================== -->
+
+    <!-- Gazebo 材质：必须在 <gazebo reference> 里指定材质名。
+         sdformat 在 URDF 转 SDF 时会丢弃 <visual> 里的 <material><color>
+         （实测转换后 SDF 中材质数为 0），模型在 Gazebo 中会退化为默认灰白色，
+         只有这里的 <gazebo reference> 材质能真正生效。
+         这里全部使用自定义半透明材质 C305Car/*Transparent，
+         材质脚本见 media/materials/scripts/c305_car.material（alpha=0.5）。
+         Gazebo 通过 GAZEBO_RESOURCE_PATH 找到该脚本，由 launch 文件设置。 -->
+    <xacro:macro name="gazebo_material" params="link mat">
+        <gazebo reference="${link}">
+            <material>${mat}</material>
+        </gazebo>
+    </xacro:macro>
+
+    <!-- 黑色部件 -->
+    <xacro:gazebo_material link="chassis_link"               mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="front_bumper_link"          mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="rear_bumper_link"           mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="bumper_rod_front_left_link" mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="bumper_rod_front_right_link" mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="bumper_rod_rear_left_link"  mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="bumper_rod_rear_right_link" mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="wheel_front_left_link"      mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="wheel_front_right_link"     mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="wheel_rear_left_link"       mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="wheel_rear_right_link"      mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="upper_frame_link"           mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="lidar_base_link"            mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="lidar_stand_link"           mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="gnss_base_link"             mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="camera_front_link"          mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="camera_rear_link"           mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="camera_left_link"           mat="C305Car/BlackTransparent"/>
+    <xacro:gazebo_material link="camera_right_link"          mat="C305Car/BlackTransparent"/>
+
+    <!-- 白色车身 -->
+    <xacro:gazebo_material link="white_body_platform_link"   mat="C305Car/WhiteTransparent"/>
+    <xacro:gazebo_material link="white_body_front_link"      mat="C305Car/WhiteTransparent"/>
+    <xacro:gazebo_material link="white_body_rear_link"       mat="C305Car/WhiteTransparent"/>
+    <xacro:gazebo_material link="white_body_left_link"       mat="C305Car/WhiteTransparent"/>
+    <xacro:gazebo_material link="white_body_right_link"      mat="C305Car/WhiteTransparent"/>
+    <xacro:gazebo_material link="gnss_antenna_link"          mat="C305Car/WhiteTransparent"/>
+
+    <!-- 深灰色悬挂件、车轴 -->
+    <xacro:gazebo_material link="wheel_mount_front_left_link"  mat="C305Car/DarkGreyTransparent"/>
+    <xacro:gazebo_material link="wheel_mount_front_right_link" mat="C305Car/DarkGreyTransparent"/>
+    <xacro:gazebo_material link="wheel_mount_rear_left_link"   mat="C305Car/DarkGreyTransparent"/>
+    <xacro:gazebo_material link="wheel_mount_rear_right_link"  mat="C305Car/DarkGreyTransparent"/>
+    <xacro:gazebo_material link="wheel_axle_front_left_link"   mat="C305Car/DarkGreyTransparent"/>
+    <xacro:gazebo_material link="wheel_axle_front_right_link"  mat="C305Car/DarkGreyTransparent"/>
+    <xacro:gazebo_material link="wheel_axle_rear_left_link"    mat="C305Car/DarkGreyTransparent"/>
+    <xacro:gazebo_material link="wheel_axle_rear_right_link"   mat="C305Car/DarkGreyTransparent"/>
+
+    <!-- 银色雷达盖、天线杆，蓝色雷达主体 -->
+    <xacro:gazebo_material link="lidar_cap_bottom_link"      mat="C305Car/GreyTransparent"/>
+    <xacro:gazebo_material link="lidar_cap_top_link"         mat="C305Car/GreyTransparent"/>
+    <xacro:gazebo_material link="gnss_stand_link"            mat="C305Car/GreyTransparent"/>
+    <xacro:gazebo_material link="lidar_body_link"            mat="C305Car/BlueTransparent"/>
+
+    <!-- 轮胎摩擦系数：默认 mu 偏低，差速驱动时后轮容易打滑空转 -->
+    <gazebo reference="wheel_front_left_link">
+        <mu1>1.0</mu1><mu2>1.0</mu2><kp>1e6</kp><kd>1e3</kd>
+    </gazebo>
+    <gazebo reference="wheel_front_right_link">
+        <mu1>1.0</mu1><mu2>1.0</mu2><kp>1e6</kp><kd>1e3</kd>
+    </gazebo>
+    <gazebo reference="wheel_rear_left_link">
+        <mu1>1.0</mu1><mu2>1.0</mu2><kp>1e6</kp><kd>1e3</kd>
+    </gazebo>
+    <gazebo reference="wheel_rear_right_link">
+        <mu1>1.0</mu1><mu2>1.0</mu2><kp>1e6</kp><kd>1e3</kd>
+    </gazebo>
+
+    <!-- 雷达：360° 2D 扫描，输出 /scan（sensor_msgs/LaserScan，frame_id=lidar_link）。
+         雷达本体高 0.085，扫描中心在中部蓝色段中心 z=0.0425。
+         需要 3D 点云时，在 <ray> 中加 <vertical> 段并把 output_type 改成
+         sensor_msgs/PointCloud2。 -->
+    <gazebo reference="lidar_link">
+        <sensor type="ray" name="lidar_sensor">
+            <pose>0 0 0.0425 0 0 0</pose>
+            <update_rate>10</update_rate>
+            <!-- 如果想在 Gazebo 窗口里直接看雷达射线，把 visualize 设为 true。 -->
+            <visualize>false</visualize>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>720</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-3.14159265</min_angle>
+                        <max_angle>3.14159265</max_angle>
+                    </horizontal>
+                </scan>
+                <range>
+                    <min>0.10</min>
+                    <max>30.0</max>
+                    <resolution>0.01</resolution>
+                </range>
+                <noise>
+                    <type>gaussian</type>
+                    <mean>0.0</mean>
+                    <stddev>0.01</stddev>
+                </noise>
+            </ray>
+            <plugin name="lidar_controller" filename="libgazebo_ros_ray_sensor.so">
+                <ros>
+                    <remapping>~/out:=scan</remapping>
+                </ros>
+                <output_type>sensor_msgs/LaserScan</output_type>
+                <frame_name>lidar_link</frame_name>
+            </plugin>
+        </sensor>
+    </gazebo>
+
+    <!-- 四个鱼眼相机：Gazebo 原生 camera 插件不支持鱼眼畸变模型，
+         这里用 150° 大视场角近似；畸变需在 ROS 层用 image_proc 或自写节点校正。
+         每路话题：/camera_front/image_raw 等（namespace 与相机名一致） -->
+    <xacro:macro name="gazebo_camera" params="name">
+        <gazebo reference="${name}_link">
+            <sensor type="camera" name="${name}_sensor">
+                <update_rate>30.0</update_rate>
+                <camera>
+                    <horizontal_fov>2.61799</horizontal_fov>
+                    <image>
+                        <width>640</width>
+                        <height>480</height>
+                        <format>R8G8B8</format>
+                    </image>
+                    <clip>
+                        <near>0.02</near>
+                        <far>100.0</far>
+                    </clip>
+                    <noise>
+                        <type>gaussian</type>
+                        <mean>0.0</mean>
+                        <stddev>0.007</stddev>
+                    </noise>
+                </camera>
+                <always_on>true</always_on>
+                <visualize>false</visualize>
+                <plugin name="${name}_controller" filename="libgazebo_ros_camera.so">
+                    <ros>
+                        <remapping>image_raw:=image_raw</remapping>
+                        <remapping>camera_info:=camera_info</remapping>
+                    </ros>
+                    <!-- camera_name 本身就会成为话题前缀，话题为 /camera_front/image_raw 等 -->
+                    <camera_name>${name}</camera_name>
+                    <frame_name>${name}_link</frame_name>
+                </plugin>
+            </sensor>
+        </gazebo>
+    </xacro:macro>
+
+    <xacro:gazebo_camera name="camera_front"/>
+    <xacro:gazebo_camera name="camera_rear"/>
+    <xacro:gazebo_camera name="camera_left"/>
+    <xacro:gazebo_camera name="camera_right"/>
+
+    <!-- ros2_control：后轮速度接口 + 前轮转向位置接口。
+         前轮自转关节 wheel_front_*_joint 用 effort 接口且不给任何控制器接管：
+         effort 未接管时恒为 0 扭矩，GazeboSystem 每步 SetForce(0,0)，即“纯被动
+         随动、由地面摩擦带动”，任何控制器都驱动不了它；但 position/velocity
+         状态接口会被 joint_state_broadcaster 读到，这样 rviz 才有
+         steer_front_*_link -> wheel_front_*_link 的 TF（否则报 No transform）。 -->
+    <ros2_control name="c305_car_system" type="system">
+        <hardware>
+            <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+        </hardware>
+
+        <!-- 后轮驱动：速度命令 -->
+        <joint name="wheel_rear_left_joint">
+            <command_interface name="velocity"/>
+            <state_interface name="velocity"/>
+            <state_interface name="position"/>
+        </joint>
+        <joint name="wheel_rear_right_joint">
+            <command_interface name="velocity"/>
+            <state_interface name="velocity"/>
+            <state_interface name="position"/>
+        </joint>
+
+        <!-- 前轮转向：位置命令 -->
+        <joint name="steer_front_left_joint">
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+        <joint name="steer_front_right_joint">
+            <command_interface name="position"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+
+        <!-- 前轮自转：effort 命令（未接管 = 0 扭矩，纯被动） + 状态回读 -->
+        <joint name="wheel_front_left_joint">
+            <command_interface name="effort"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+        <joint name="wheel_front_right_joint">
+            <command_interface name="effort"/>
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+        </joint>
+    </ros2_control>
+
+    <!-- gazebo_ros2_control 插件：读取控制器配置，创建 controller_manager -->
+    <gazebo>
+        <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+            <parameters>$(find c305_car)/config/controllers.yaml</parameters>
+            <ros>
+                <namespace>/</namespace>
+                <!-- 控制器话题重映射（必须写在这里：重映射作用于 controller_manager
+                     进程，控制器节点会继承；写 spawner 或 YAML 里都无效）。
+                     diff_drive_controller 在 use_stamped_vel=false 时订阅的是
+                     ~/cmd_vel_unstamped。这里不再直接订阅 /cmd_vel，而是订阅
+                     cmd_vel_to_ackermann 节点算出的 /ackermann_cmd_vel，
+                     这样后轮差速与前轮转角保持一致。 -->
+                <remapping>diff_drive_controller/cmd_vel_unstamped:=ackermann_cmd_vel</remapping>
+                <remapping>diff_drive_controller/odom:=odom</remapping>
+            </ros>
+        </plugin>
+    </gazebo>
+
+</robot>

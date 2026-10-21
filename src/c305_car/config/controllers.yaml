@@ -1,0 +1,60 @@
+# c305_car 控制器配置（Gazebo Classic + gazebo_ros2_control）
+#
+# 驱动方案：后轮差速驱动 + 前轮阿克曼转向
+#   后轮：wheel_rear_left_joint / wheel_rear_right_joint  —— 速度接口
+#   前轮：steer_front_left_joint / steer_front_right_joint —— 位置接口
+#   前轮自转（wheel_front_*_joint）为被动随动关节，不归任何控制器管
+#
+# 尺寸对应 urdf/c305_car.urdf.xacro：
+#   wheel_separation = 2 * wheel_y = 2 * 0.41 * W = 0.902 m
+#   wheel_radius     = 0.5 * 0.225 * L = 0.180 m
+# 修改 L / W 后记得同步这两个值。
+controller_manager:
+  ros__parameters:
+    update_rate: 100   # Hz
+    use_sim_time: true
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+    steering_controller:
+      type: position_controllers/JointGroupPositionController
+
+# 后轮差速驱动：订阅 /cmd_vel，发布 /odom 与 odom->base_link 的 TF
+diff_drive_controller:
+  ros__parameters:
+    left_wheel_names: ["wheel_rear_left_joint"]
+    right_wheel_names: ["wheel_rear_right_joint"]
+    wheel_separation: 0.902
+    wheel_radius: 0.180
+    # 左右轮半径为 0 时表示两轮半径相同；如需补偿可分别填写
+    wheel_separation_multiplier: 1.0
+    left_wheel_radius_multiplier: 1.0
+    right_wheel_radius_multiplier: 1.0
+
+    publish_rate: 50.0
+    odom_frame_id: odom
+    base_frame_id: base_link
+    pose_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+    twist_covariance_diagonal: [0.001, 0.001, 0.001, 0.001, 0.001, 0.01]
+
+    # 让 /cmd_vel 使用 geometry_msgs/Twist（而不是 TwistStamped）
+    use_stamped_vel: false
+    open_loop: false
+    enable_odom_tf: true
+
+    cmd_vel_timeout: 0.5
+    preserve_turning_radius: false
+    publish_limited_velocity: false
+
+# 前轮转向：位置控制，命令话题 /steering_controller/commands
+#   std_msgs/Float64MultiArray，数据顺序 [左前, 右前]，单位 rad
+#   ros2 topic pub /steering_controller/commands std_msgs/msg/Float64MultiArray "{data: [0.3, 0.3]}"
+steering_controller:
+  ros__parameters:
+    joints:
+      - steer_front_left_joint
+      - steer_front_right_joint

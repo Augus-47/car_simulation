@@ -1,0 +1,103 @@
+// c305_car 自定义 Gazebo 半透明材质脚本
+//
+// Gazebo Classic 的 URDF 解析器会丢弃 <visual> 里的 <material><color>，
+// 只能通过 <gazebo reference="link"><material>材质名</material></gazebo>
+// 引用材质脚本里的材质。内置的 Gazebo/*Transparent 颜色不全（没有白色、
+// 深灰、银色），所以这里按模型配色自定义一组 alpha=0.5 的半透明材质。
+//
+// Gazebo 在 GAZEBO_RESOURCE_PATH 下的
+// media/materials/scripts/*.material 中查找材质定义，
+// 该路径由 gazebo_c305_car.launch.py 设置到本包的 share 目录。
+//
+// 修改半透明程度：调整各材质里的 alpha_op_ex 最后一个数值
+// （0.0 = 完全透明，1.0 = 完全不透明）。
+
+material C305Car/BlackTransparent
+{
+  technique
+  {
+    pass
+    {
+      scene_blend alpha_blend
+      depth_write off
+      lighting off
+      texture_unit
+      {
+        colour_op_ex source1 src_manual src_current 0.05 0.05 0.05
+        alpha_op_ex source1 src_manual src_current 0.5
+      }
+    }
+  }
+}
+
+material C305Car/WhiteTransparent
+{
+  technique
+  {
+    pass
+    {
+      scene_blend alpha_blend
+      depth_write off
+      lighting off
+      texture_unit
+      {
+        colour_op_ex source1 src_manual src_current 0.92 0.92 0.92
+        alpha_op_ex source1 src_manual src_current 0.5
+      }
+    }
+  }
+}
+
+material C305Car/DarkGreyTransparent
+{
+  technique
+  {
+    pass
+    {
+      scene_blend alpha_blend
+      depth_write off
+      lighting off
+      texture_unit
+      {
+        colour_op_ex source1 src_manual src_current 0.25 0.25 0.25
+        alpha_op_ex source1 src_manual src_current 0.5
+      }
+    }
+  }
+}
+
+material C305Car/GreyTransparent
+{
+  technique
+  {
+    pass
+    {
+      scene_blend alpha_blend
+      depth_write off
+      lighting off
+      texture_unit
+      {
+        colour_op_ex source1 src_manual src_current 0.75 0.75 0.78
+        alpha_op_ex source1 src_manual src_current 0.5
+      }
+    }
+  }
+}
+
+material C305Car/BlueTransparent
+{
+  technique
+  {
+    pass
+    {
+      scene_blend alpha_blend
+      depth_write off
+      lighting off
+      texture_unit
+      {
+        colour_op_ex source1 src_manual src_current 0.10 0.55 1.00
+        alpha_op_ex source1 src_manual src_current 0.5
+      }
+    }
+  }
+}
