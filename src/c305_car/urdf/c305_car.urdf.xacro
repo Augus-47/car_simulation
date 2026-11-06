@@ -284,6 +284,16 @@
             <child link="${name}_link"/>
             <origin xyz="${x} ${y} ${z}" rpy="0 0 ${yaw}"/>
         </joint>
+        <!-- REP-103 optical frame uses +Z forward, +X right and +Y down.  The
+             physical camera link keeps the vehicle convention (+X forward,
+             +Y left, +Z up), so calibration and visualization can use the
+             appropriate frame without rewriting frame_id strings. -->
+        <link name="${name}_optical_frame"/>
+        <joint name="${name}_optical_joint" type="fixed">
+            <parent link="${name}_link"/>
+            <child link="${name}_optical_frame"/>
+            <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+        </joint>
     </xacro:macro>
 
     <!-- ================================================================== -->
@@ -299,6 +309,29 @@
             <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
         </inertial>
     </link>
+
+    <!-- base_link itself is located at the vehicle's ground projection
+         (x/y at chassis centre, z=0).  Keep a conventional base_footprint
+         alias for consumers that require it.  It is intentionally a child:
+         odom->base_link is published by diff_drive_controller, therefore
+         publishing a second parent for base_link would create an invalid TF
+         tree. -->
+    <link name="base_footprint"/>
+    <joint name="base_footprint_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="base_footprint"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <!-- IMU extrinsic derived from the existing measured transforms in
+         auto_driving/src/launch/launch/static_sensors_tf.launch.py:
+         base->rslidar (0.42, 0, 1.0) plus rslidar->imu (0.36, -0.14, -0.55). -->
+    <link name="imu_link"/>
+    <joint name="imu_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="imu_link"/>
+        <origin xyz="0.78 -0.14 0.45" rpy="0 0 0"/>
+    </joint>
 
     <!-- 一、黑色底盘（含原中央底部防护罩；前后各比平台短 5cm，宽度距车轮内缘各 5cm） -->
     <xacro:fixed_box name="chassis_link" parent="base_link"
@@ -519,6 +552,25 @@
         <origin xyz="0 0 0.025" rpy="0 0 0"/>
     </joint>
 
+    <!-- 3D 雷达测量坐标系。名称与 auto_driving 中 RoboSense 驱动的默认
+         frame_id 一致；原点位于蓝色扫描窗口的中心。 -->
+    <link name="rslidar"/>
+    <joint name="rslidar_joint" type="fixed">
+        <parent link="lidar_link"/>
+        <child link="rslidar"/>
+        <origin xyz="0 0 0.0425" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Compatibility frame used by nodes configured for frame_id=lidar.
+         It is the same physical measurement origin as rslidar and must not be
+         published again by a static_transform_publisher. -->
+    <link name="lidar"/>
+    <joint name="lidar_compat_joint" type="fixed">
+        <parent link="rslidar"/>
+        <child link="lidar"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
     <!-- 下部银色盖子 -->
     <link name="lidar_cap_bottom_link">
         <visual>
@@ -673,42 +725,83 @@
         <mu1>1.0</mu1><mu2>1.0</mu2><kp>1e6</kp><kd>1e3</kd>
     </gazebo>
 
-    <!-- 雷达：360° 2D 扫描，输出 /scan（sensor_msgs/LaserScan，frame_id=lidar_link）。
-         雷达本体高 0.085，扫描中心在中部蓝色段中心 z=0.0425。
-         需要 3D 点云时，在 <ray> 中加 <vertical> 段并把 output_type 改成
-         sensor_msgs/PointCloud2。 -->
-    <gazebo reference="lidar_link">
-        <sensor type="ray" name="lidar_sensor">
-            <pose>0 0 0.0425 0 0 0</pose>
+    <!-- 16 线 3D 雷达：360° 水平扫描、±15° 垂直视场，输出
+         /rslidar_points（sensor_msgs/PointCloud2，frame_id=rslidar）。
+         使用 CPU ray 而不是 gpu_ray：Gazebo Classic 11 的 gpu_ray 只稳定支持
+         单条垂直射线，而且无显示环境下 GPU 渲染传感器无法工作。
+
+         同位置保留一个轻量 2D 扫描传感器输出 /scan，兼容已有 Nav2 和
+         laser_avoid。它不是另一块物理雷达，只是 3D 点云中心水平面的兼容输出。 -->
+    <gazebo reference="rslidar">
+        <sensor type="ray" name="rslidar_16_sensor">
+            <pose>0 0 0 0 0 0</pose>
             <update_rate>10</update_rate>
-            <!-- 如果想在 Gazebo 窗口里直接看雷达射线，把 visualize 设为 true。 -->
             <visualize>false</visualize>
+            <always_on>true</always_on>
             <ray>
                 <scan>
                     <horizontal>
                         <samples>720</samples>
-                        <resolution>1</resolution>
+                        <resolution>1.0</resolution>
+                        <min_angle>-3.14159265</min_angle>
+                        <max_angle>3.14159265</max_angle>
+                    </horizontal>
+                    <vertical>
+                        <samples>16</samples>
+                        <resolution>1.0</resolution>
+                        <min_angle>-0.261799</min_angle>
+                        <max_angle>0.261799</max_angle>
+                    </vertical>
+                </scan>
+                <range>
+                    <min>0.15</min>
+                    <max>60.0</max>
+                    <resolution>0.01</resolution>
+                </range>
+                <!-- Gazebo Classic 11 indexes ray noise per vertical beam.
+                     With a multi-layer CPU ray sensor that code path can emit
+                     "Get noise index not valid" and eventually segfault.
+                     Keep the simulated 16-layer lidar deterministic here;
+                     add point noise in a ROS post-processing node if needed. -->
+            </ray>
+            <plugin name="rslidar_points_controller" filename="libgazebo_ros_ray_sensor.so">
+                <ros>
+                    <remapping>~/out:=rslidar_points</remapping>
+                </ros>
+                <output_type>sensor_msgs/PointCloud2</output_type>
+                <frame_name>rslidar</frame_name>
+            </plugin>
+        </sensor>
+
+        <sensor type="ray" name="lidar_scan_compat_sensor">
+            <pose>0 0 0 0 0 0</pose>
+            <update_rate>10</update_rate>
+            <visualize>false</visualize>
+            <always_on>true</always_on>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>720</samples>
+                        <resolution>1.0</resolution>
                         <min_angle>-3.14159265</min_angle>
                         <max_angle>3.14159265</max_angle>
                     </horizontal>
                 </scan>
                 <range>
-                    <min>0.10</min>
-                    <max>30.0</max>
+                    <min>0.15</min>
+                    <max>60.0</max>
                     <resolution>0.01</resolution>
                 </range>
-                <noise>
-                    <type>gaussian</type>
-                    <mean>0.0</mean>
-                    <stddev>0.01</stddev>
-                </noise>
+                <!-- Keep Gazebo Classic sensor output deterministic.  Its
+                     internal noise lookup is unstable with this mixed 2D/3D
+                     sensor model; noise can be injected safely in ROS. -->
             </ray>
-            <plugin name="lidar_controller" filename="libgazebo_ros_ray_sensor.so">
+            <plugin name="lidar_scan_compat_controller" filename="libgazebo_ros_ray_sensor.so">
                 <ros>
                     <remapping>~/out:=scan</remapping>
                 </ros>
                 <output_type>sensor_msgs/LaserScan</output_type>
-                <frame_name>lidar_link</frame_name>
+                <frame_name>lidar</frame_name>
             </plugin>
         </sensor>
     </gazebo>
@@ -731,11 +824,7 @@
                         <near>0.02</near>
                         <far>100.0</far>
                     </clip>
-                    <noise>
-                        <type>gaussian</type>
-                        <mean>0.0</mean>
-                        <stddev>0.007</stddev>
-                    </noise>
+                    <!-- Noise is intentionally applied outside Gazebo. -->
                 </camera>
                 <always_on>true</always_on>
                 <visualize>false</visualize>
@@ -746,7 +835,7 @@
                     </ros>
                     <!-- camera_name 本身就会成为话题前缀，话题为 /camera_front/image_raw 等 -->
                     <camera_name>${name}</camera_name>
-                    <frame_name>${name}_link</frame_name>
+                    <frame_name>${name}_optical_frame</frame_name>
                 </plugin>
             </sensor>
         </gazebo>
@@ -756,6 +845,38 @@
     <xacro:gazebo_camera name="camera_rear"/>
     <xacro:gazebo_camera name="camera_left"/>
     <xacro:gazebo_camera name="camera_right"/>
+
+    <!-- IMU data uses the same frame that is present in the URDF TF tree. -->
+    <gazebo reference="imu_link">
+        <sensor type="imu" name="imu_sensor">
+            <always_on>true</always_on>
+            <update_rate>100.0</update_rate>
+            <visualize>false</visualize>
+            <!-- gazebo_ros_imu_sensor reads one noise model for each of the
+                 three angular-velocity and three linear-acceleration axes.
+                 Define all six explicitly; omitting them makes Gazebo Classic
+                 report six invalid noise indices and can segfault. -->
+            <imu>
+                <angular_velocity>
+                    <x><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></x>
+                    <y><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></y>
+                    <z><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></z>
+                </angular_velocity>
+                <linear_acceleration>
+                    <x><noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise></x>
+                    <y><noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise></y>
+                    <z><noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise></z>
+                </linear_acceleration>
+            </imu>
+            <plugin name="imu_controller" filename="libgazebo_ros_imu_sensor.so">
+                <ros>
+                    <remapping>~/out:=imu</remapping>
+                </ros>
+                <frame_name>imu_link</frame_name>
+                <initial_orientation_as_reference>false</initial_orientation_as_reference>
+            </plugin>
+        </sensor>
+    </gazebo>
 
     <!-- ros2_control：后轮速度接口 + 前轮转向位置接口。
          前轮自转关节 wheel_front_*_joint 用 effort 接口且不给任何控制器接管：

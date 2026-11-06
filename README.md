@@ -1,5 +1,8 @@
 # c305_car 四轮阿克曼小车仿真 — 操作文档
 
+与 `auto_driving` 对接时的话题、消息、frame 和 `VehicleState` 单位以项目根目录
+`INTERFACE_CONTRACT.md` 为准。
+
 本文档面向本项目的使用者，覆盖环境准备、编译、启动、控制、传感器、参数修改和常见问题。
 
 ---
@@ -11,7 +14,7 @@
 | 项目 | 内容 |
 |---|---|
 | 驱动方式 | 后轮差速驱动 + 前轮阿克曼转向（双层关节） |
-| 传感器 | 1 个 360° 2D 激光雷达 + 4 个 150° 广角相机 |
+| 传感器 | 1 个 360° 16 线 3D 激光雷达（附带 `/scan` 兼容输出）+ 4 个 150° 广角相机 |
 | 控制接口 | `ros2_control`（`gazebo_ros2_control` 硬件插件） |
 | 可视化 | rviz2 / Gazebo GUI |
 | 模型格式 | URDF 由 `xacro` 生成 |
@@ -28,7 +31,11 @@ src/c305_car/
 ├── scripts/cmd_vel_to_ackermann.py     # /cmd_vel → 前轮转向 + 后轮差速
 ├── meshes/gnss_dome.stl          # 天线穹顶网格
 ├── media/materials/scripts/c305_car.material  # Gazebo 自定义半透明材质
+├── worlds/perception_test.world    # 多模态感知测试世界（道路、车辆、标志、遮挡）
 └── images/                       # 实物参考照片
+
+src/car_msg/                      # VehicleState / OrinPose 消息定义
+src/c305_sim_adapter/             # auto_driving 与仿真底盘的双向适配
 ```
 
 > 目前模型所有部件都设置为 **半透明**（alpha = 0.5）：
@@ -72,7 +79,7 @@ gazebo --version        # 应为 11.x
 ```bash
 cd ~/Simulation_study/car_simulation
 source /opt/ros/humble/setup.bash
-colcon build --packages-select c305_car
+colcon build --packages-up-to c305_car
 source install/setup.bash
 ```
 
@@ -115,16 +122,20 @@ ros2 launch c305_car gazebo_c305_car.launch.py
 | `gui` | `true` | 是否打开 Gazebo 图形界面 |
 | `rviz` | `false` | 是否同时启动 rviz2 |
 | `use_sim_time` | `true` | 使用 Gazebo 仿真时间 |
-| `world` | `gazebo_ros` 的 `empty.world` | 世界文件 |
+| `world` | `c305_car/worlds/perception_test.world` | 多模态感知测试世界；可用 `world:=/path/to/other.world` 覆盖 |
 | `entity` | `c305_car` | 模型名称 |
 | `z` | `0.02` | 初始生成高度（m） |
 | `steering_bridge` | `true` | 是否启动 `/cmd_vel` → 前轮转向桥接节点 |
+| `sim_adapter` | `true` | 是否启动 `/control_cmd` ↔ 仿真底盘适配器 |
 
 常用组合：
 
 ```bash
-# 有界面
+# 默认多模态感知测试世界
 ros2 launch c305_car gazebo_c305_car.launch.py gui:=true
+
+# 指定其它 Gazebo world
+ros2 launch c305_car gazebo_c305_car.launch.py world:=/path/to/other.world
 
 # 有界面 + rviz2
 ros2 launch c305_car gazebo_c305_car.launch.py gui:=true rviz:=true
@@ -145,6 +156,8 @@ ros2 launch c305_car gazebo_c305_car.launch.py gui:=false
    - `joint_state_broadcaster`
    - `diff_drive_controller`
    - `steering_controller`
+7. 默认启动 `c305_sim_adapter`，提供 `/control_cmd`、`/vehicle_info` 和
+   `/vehicle_state` 接口；若只需直接调试 `/cmd_vel`，可加 `sim_adapter:=false`
 
 ---
 
@@ -264,11 +277,15 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 | 话题 | 类型 | 方向 | 说明 |
 |---|---|---|---|
 | `/cmd_vel` | `geometry_msgs/msg/Twist` | 订阅 | 遥控指令：`linear.x` 速度、`angular.z` 转向 |
+| `/control_cmd` | `car_msg/msg/VehicleState` | 订阅 | 自动驾驶目标速度、中心转角和制动请求 |
+| `/vehicle_info` | `car_msg/msg/VehicleState` | 发布 | 实测车速、由转向关节反算的中心转角及制动状态 |
+| `/vehicle_state` | `car_msg/msg/VehicleState` | 发布 | 与 `/vehicle_info` 相同的兼容反馈（可关闭） |
 | `/ackermann_cmd_vel` | `geometry_msgs/msg/Twist` | 内部 | 桥接节点修正后交给后轮差速控制器的指令 |
 | `/odom` | `nav_msgs/msg/Odometry` | 发布 | 里程计 |
 | `/joint_states` | `sensor_msgs/msg/JointState` | 发布 | 6 个关节的位置/速度 |
 | `/dynamic_joint_states` | `control_msgs/msg/DynamicJointState` | 发布 | 控制器内部状态 |
-| `/scan` | `sensor_msgs/msg/LaserScan` | 发布 | 激光雷达 |
+| `/rslidar_points` | `sensor_msgs/msg/PointCloud2` | 发布 | 16 线三维激光雷达点云 |
+| `/scan` | `sensor_msgs/msg/LaserScan` | 发布 | 三维雷达中心水平面的二维兼容扫描 |
 | `/camera_front/image_raw` | `sensor_msgs/msg/Image` | 发布 | 前相机 |
 | `/camera_rear/image_raw` | `sensor_msgs/msg/Image` | 发布 | 后相机 |
 | `/camera_left/image_raw` | `sensor_msgs/msg/Image` | 发布 | 左相机 |
@@ -280,10 +297,40 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 相机还提供 `image_raw/compressed`、`compressedDepth`、`theora` 等压缩传输话题。
 
+### 6.1 自动驾驶底盘适配
+
+`c305_sim_adapter` 把 `/control_cmd.velocity`（m/s，负数表示倒车）和
+`/control_cmd.steering`（degree，左正右负）转换为现有桥接节点接受的
+`/cmd_vel`。收到 `brake>0.01` 或连续 `0.5 s` 没有新命令时会强制停车。
+默认速度限幅为前进 `0.70 m/s`、倒车 `0.12 m/s`。
+
+本项目的 `cmd_vel_to_ackermann.py` 将 `angular.z` 解释为转向输入：
+
+```text
+中心转角(rad) = 0.5 * angular.z
+```
+
+所以适配器采用 `angular.z = radians(steering) / 0.5`。这不是标准的偏航角速度
+公式，不应直接复制到其它 Twist 底盘。桥接节点随后才按阿克曼几何生成后轮所需
+的实际角速度。反馈转角来自两个实际转向关节，而不是命令回显。
+
+测试自动驾驶接口：
+
+```bash
+ros2 topic pub -r 10 /control_cmd car_msg/msg/VehicleState \
+  "{velocity: 0.3, steering: 20.0, brake: 0.0, gears: 0.0, led: auto, battary: 0.0}"
+
+ros2 topic echo /vehicle_info
+```
+
+停止上面的发布器后，适配器会在 `0.5 s` 后自动发出停车命令。完整消息字段和
+接口约定见 `INTERFACE_CONTRACT.md`。
+
 常用检查命令：
 
 ```bash
 ros2 topic list
+ros2 topic hz /rslidar_points
 ros2 topic hz /scan
 ros2 topic hz /camera_front/image_raw
 ros2 topic echo /odom --field pose.pose.position
@@ -300,12 +347,14 @@ ros2 topic echo /joint_states
 
 | 参数 | 值 |
 |---|---|
-| 话题 | `/scan` |
-| 类型 | `sensor_msgs/LaserScan` |
-| `frame_id` | `lidar_link` |
-| 扫描角 | −π ~ +π（360°） |
-| 采样数 | 720 |
-| 量程 | 0.10 ~ 30.0 m |
+| 主话题 | `/rslidar_points` |
+| 主类型 | `sensor_msgs/PointCloud2`（x/y/z/intensity） |
+| 兼容话题 | `/scan`（`sensor_msgs/LaserScan`） |
+| `frame_id` | `rslidar` |
+| 水平扫描角 | −π ~ +π（360°），720 点/线 |
+| 垂直扫描角 | −15° ~ +15°，16 线 |
+| 理论点数 | 11520 点/帧（无回波点会被过滤） |
+| 量程 | 0.15 ~ 60.0 m |
 | 更新率 | 10 Hz |
 | 噪声 | 高斯，σ = 0.01 |
 
@@ -313,7 +362,7 @@ rvtool 查看：
 
 ```bash
 ros2 run rviz2 rviz2 -d $(ros2 pkg prefix c305_car)/share/c305_car/config/display_c305_car.rviz
-# 手动添加 LaserScan，话题选 /scan
+# 手动添加 PointCloud2，话题选 /rslidar_points；Fixed Frame 选 rslidar 或 base_link
 ```
 
 ### 7.2 四个相机
@@ -730,7 +779,7 @@ pkill -9 -f rviz2
 | GNSS | 只有外观，没有传感器插件 |
 | 材质 | 使用自定义 `.material` 脚本实现半透明；关闭了光照（`lighting off`），颜色为纯色，无明暗渐变 |
 | 半透明遮挡 | 关闭了深度写入（`depth_write off`），多个半透明面重叠时前后排序可能不完美 |
-| 雷达 | 2D 单线，非 3D 点云；需要 3D 时修改 `<ray>` 配置并改输出类型 |
+| 三维雷达性能 | 使用 CPU ray 保证无显示环境可运行；VMware 中仿真可能低于实时速度 |
 
 
 ---

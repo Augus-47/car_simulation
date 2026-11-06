@@ -1,4 +1,7 @@
 import os
+import re
+
+import xacro
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -11,7 +14,7 @@ from launch.actions import (
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, LaunchConfiguration
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -20,6 +23,8 @@ def generate_launch_description():
     pkg_path = get_package_share_directory('c305_car')
     xacro_path = os.path.join(pkg_path, 'urdf', 'c305_car.urdf.xacro')
     rviz_path = os.path.join(pkg_path, 'config', 'display_c305_car.rviz')
+    default_world_path = os.path.join(
+        pkg_path, 'worlds', 'perception_test.world')
     gazebo_launch_path = os.path.join(
         get_package_share_directory('gazebo_ros'), 'launch', 'gazebo.launch.py')
 
@@ -30,10 +35,18 @@ def generate_launch_description():
     entity = LaunchConfiguration('entity')
     spawn_z = LaunchConfiguration('z')
     steering_bridge_enabled = LaunchConfiguration('steering_bridge')
+    sim_adapter_enabled = LaunchConfiguration('sim_adapter')
+    publish_map_to_odom = LaunchConfiguration('publish_map_to_odom')
 
-    # xacro 展开为 URDF 文本
+    # Expand Xacro in-process and remove XML comments.  gazebo_ros2_control on
+    # ROS 2 Humble forwards robot_description through the RCL parameter parser;
+    # comments containing YAML-significant text can otherwise make controller
+    # manager creation fail even though the URDF itself is valid.
+    robot_description_xml = xacro.process_file(xacro_path).toxml()
+    robot_description_xml = re.sub(
+        r'<!--.*?-->', '', robot_description_xml, flags=re.DOTALL)
     robot_description = ParameterValue(
-        Command(['xacro ', xacro_path]), value_type=str)
+        robot_description_xml, value_type=str)
 
     # 发布机器人 TF（Gazebo 中关节状态由 joint_state_broadcaster 提供）
     robot_state_publisher = Node(
@@ -43,6 +56,23 @@ def generate_launch_description():
             'robot_description': robot_description,
             'use_sim_time': use_sim_time,
         }],
+        output='screen',
+    )
+
+    # Gazebo provides odom->base_link.  Until a localization/SLAM node owns
+    # map->odom, publish an identity transform so the full navigation TF chain
+    # is connected.  Disable this when AMCL, SLAM or another localization
+    # component publishes map->odom; TF must have exactly one authority.
+    map_to_odom = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='sim_map_to_odom',
+        arguments=[
+            '--x', '0', '--y', '0', '--z', '0',
+            '--roll', '0', '--pitch', '0', '--yaw', '0',
+            '--frame-id', 'map', '--child-frame-id', 'odom',
+        ],
+        condition=IfCondition(publish_map_to_odom),
         output='screen',
     )
 
@@ -143,6 +173,27 @@ def generate_launch_description():
         output='screen',
     )
 
+    # auto_driving 使用 VehicleState 的 /control_cmd 与 /vehicle_info；
+    # 仿真适配器负责与本车 /cmd_vel、/odom、/joint_states 双向转换。
+    sim_adapter = Node(
+        package='c305_sim_adapter',
+        executable='sim_adapter',
+        name='c305_sim_adapter',
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'wheelbase': 1.152,
+            'track_width': 0.902,
+            'steer_gain': 0.5,
+            'max_steering_angle': 0.5,
+            'max_forward_speed': 0.70,
+            'max_reverse_speed': 0.12,
+            'command_timeout': 0.5,
+            'publish_vehicle_state': True,
+        }],
+        condition=IfCondition(sim_adapter_enabled),
+        output='screen',
+    )
+
     rviz2 = Node(
         package='rviz2',
         executable='rviz2',
@@ -164,8 +215,7 @@ def generate_launch_description():
             description='是否同时启动 RViz2'),
         DeclareLaunchArgument(
             'world',
-            default_value=os.path.join(
-                get_package_share_directory('gazebo_ros'), 'worlds', 'empty.world'),
+            default_value=default_world_path,
             description='Gazebo world 文件路径'),
         DeclareLaunchArgument(
             'entity', default_value='c305_car',
@@ -176,11 +226,19 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'steering_bridge', default_value='true',
             description='是否启动 /cmd_vel -> 前轮转向桥接节点'),
+        DeclareLaunchArgument(
+            'sim_adapter', default_value='true',
+            description='是否启动 VehicleState 仿真底盘适配器'),
+        DeclareLaunchArgument(
+            'publish_map_to_odom', default_value='true',
+            description='发布仿真默认 map->odom；AMCL/SLAM 接管时设为 false'),
         robot_state_publisher,
+        map_to_odom,
         gazebo_resource_path,
         gazebo,
         spawn_entity,
         load_controllers,
         steering_bridge,
+        sim_adapter,
         rviz2,
     ])
