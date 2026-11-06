@@ -4,3 +4,10 @@ log/
 __pycache__/
 *.pyc
 .vscode/
+build/
+install/
+log/
+*.bak
+*.tmp
+*.swp
+.DS_Store
